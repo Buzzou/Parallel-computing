@@ -1,94 +1,65 @@
-//
-/* Created by RuoHao Li on 6/17/21.
-    除了0号结点，剩下的都做计算(投点、收集、计数)，0号负责记录一共投的次数与落在圆内的次数 */
-//
-
-#include <stdio.h>
-#include <stdlib.h>
-#include "mpi.h"
-#include <math.h>
+#include <iostream>
+#include <random>
+#include <cmath>
+#include <mpi.h>
 
 #define SEED 35791246
 
 int main(int argc, char *argv[]) {
-    long niter = 1000000;
-    int myid;                       //holds process's rank id
-    double x, y;                     //x,y value for the random coordinate
-    int i, count = 0;                 //Count holds all the number of how many good coordinates
-    double z;                       //Used to check if x^2+y^2<=1
-    double pi;                      //holds approx value of pi
-    int nodenum;
-    double tic, toc;
+    const int64_t niter = 1000000;  // 每个进程的迭代次数
+    int myid, nodenum;              // 当前进程的 ID 和总进程数
+    int64_t count = 0;              // 当前进程内落在圆内的点数
+    double pi = 0.0;                // π 值估算结果
+    double tic, toc;                // 计时器变量
 
-    MPI_Init(&argc, &argv);                 //Start MPI
-    MPI_Comm_rank(MPI_COMM_WORLD, &myid);           //get rank of node's process
+    // 初始化 MPI 环境
+    MPI_Init(&argc, &argv);
+    MPI_Comm_rank(MPI_COMM_WORLD, &myid);
     MPI_Comm_size(MPI_COMM_WORLD, &nodenum);
-    int recieved[nodenum];
-    long recvniter[nodenum];
-    srand(SEED + myid);                       //Give rand() a seed value. Needs to be different on each node
 
+    // 随机数生成器
+    std::mt19937_64 rng(SEED + myid);  // 使用 Mersenne Twister 64 位引擎，确保每个进程种子不同
+    std::uniform_real_distribution<double> dist(0.0, 1.0);  // 均匀分布 [0, 1)
+
+    // 记录起始时间
     tic = MPI_Wtime();
 
+    // 非主进程执行蒙特卡洛计算
     if (myid != 0) {
-        for (i = 0; i < niter; ++i)                  //main loop
-        {
-            x = ((double) rand()) / RAND_MAX;           //gets a random x coordinate
-            y = ((double) rand()) / RAND_MAX;           //gets a random y coordinate
-            z = sqrt(x * x + y * y);                  //Checks to see if number in inside unit circle
-            if (z <= 1) {
-                count++;                //if it is, consider it a valid random point
+        for (int64_t i = 0; i < niter; ++i) {
+            double x = dist(rng);         // 随机生成 x 坐标
+            double y = dist(rng);         // 随机生成 y 坐标
+            double z = x * x + y * y;     // 判断是否落在单位圆内
+            if (z <= 1.0) {
+                ++count;  // 落在圆内的点数累加
             }
         }
-        for (i = 0; i < nodenum; ++i) {
-            MPI_Send(&count,    //pointer to the send buffer
-                     1, //Number of elements in the send buffer
-                     MPI_INT,   //kind of data thats being sent
-                     0, //destination rank
-                     1, //message tag to help identify a specific message or type of message, specified/defined by the application
-                     MPI_COMM_WORLD);   //MPI communicator
-            MPI_Send(&niter,
-                     1,
-                     MPI_LONG,
-                     0,
-                     2,
-                     MPI_COMM_WORLD);
-        }
-    } else if (myid == 0) {
-        for (i = 0; i < nodenum; ++i) {
-            MPI_Recv(&recieved[i],  //buffer to store the reveived data
-                     nodenum,   //maximum elements in the receive buffer
-                     MPI_INT,   //appropriate type for the data to be revieved
-                     MPI_ANY_SOURCE,    //rank number that the message will be sent from
-                     1, //a label to identify a particular message, is defined by an application
-                     MPI_COMM_WORLD,    //name of the MPI communicator
-                     MPI_STATUS_IGNORE);    //status variable
-            MPI_Recv(&recvniter[i],
-                     nodenum,
-                     MPI_LONG,
-                     MPI_ANY_SOURCE,
-                     2,
-                     MPI_COMM_WORLD,
-                     MPI_STATUS_IGNORE);
-        }
-    }
+        // 将结果发送给主进程
+        MPI_Send(&count, 1, MPI_INT64_T, 0, 0, MPI_COMM_WORLD);
+    } else {  // 主进程负责收集和计算结果
+        int64_t global_count = 0;                // 全局落圆点数
+        int64_t global_niter = niter * (nodenum - 1);  // 总投点数（不包括主进程）
 
-    if (myid == 0)                      //if root process
-    {
-        int finalcount = 0;
-        long finalniter = 0;
-        for (i = 0; i < nodenum; ++i) {
-            finalcount += recieved[i];
-            finalniter += recvniter[i];
+        for (int source = 1; source < nodenum; ++source) {
+            int64_t temp_count;
+            MPI_Recv(&temp_count, 1, MPI_INT64_T, source, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+            global_count += temp_count;
         }
 
-        pi = ((double) finalcount / (double) finalniter) * 4.0;               //p = 4(m/n)
+        // 根据公式计算 π 的值
+        pi = (4.0 * (double)global_count) / (double)global_niter;
 
+        // 记录结束时间
         toc = MPI_Wtime();
 
-        printf("Pi: %f\n误差：%lf\n", pi, fabs(3.141592 - pi));             //Print the calculated value of pi
-        printf("所用时间：%f秒\n", toc - tic);
+        // 输出结果
+        std::cout << "进程数: " << nodenum << '\n';
+        std::cout << "Pi: " << pi << '\n';
+        std::cout << "误差: " << std::abs(M_PI - pi) << '\n';
+        std::cout << "计算时间: " << toc - tic << " 秒\n";
     }
 
-    MPI_Finalize();                     //Close the MPI instance
+    // 结束 MPI 环境
+    MPI_Finalize();
     return 0;
 }
