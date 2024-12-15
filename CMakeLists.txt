@@ -7,11 +7,11 @@ enable_language(Fortran)
 find_package(MPI REQUIRED)
 
 add_executable(Parallel_Programming
-        exp3/exp3_3.cpp
-        "实验4/Parallel Monte Carlo Operation (Blocking).cpp"
-        "实验4/Parallel Monte Carlo Operation (Non-blocking).cpp"
-        "实验4/Parallel Monte Carlo Operation Reduced Version.cpp"
-        "实验4/Serial Monte Carlo Operation Version.cpp"
+#        exp3/exp3_3.cpp
+#        "exp4/Parallel Monte Carlo Operation (Blocking).cpp"
+#        "exp4/Parallel Monte Carlo Operation (Non-blocking).cpp"
+        "exp4/Parallel Monte Carlo Operation Reduced Version.cpp"
+#        "exp4/Serial Monte Carlo Operation Version.cpp"
         #        exp3/exp3_2.cpp
 )
 
